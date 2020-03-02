@@ -1,12 +1,15 @@
 # secureESP8266
+
 Framework für "secure" ESP8266 sketches with smartconfig, OTA, MQTT with SSL and check of certificates
 
 ## Features
 
 ### Configuration in SPIFFs
+
 All configuration data is stored in files located in directory data. This directory is uploaded to the ESP8266 together with the sketch.
 
 ### Initial WiFi-connect with SmartConfig
+
 To bring the ESP into your WiFI you have to configure the login credentials to your WiFi with an Android or iPhone App. 
 I used the the Android App (make sure you are connected with 2.4Ghz)
 
@@ -16,6 +19,7 @@ During setup the builtin led is flashing 10 times a second.
 When the device is connected there will be a short flash every 2 seconds.
 
 ### Watchdog
+
 The function 
 
     loop()
@@ -24,6 +28,7 @@ is watch by a watchdog, which reboots the ESP when the function is not entered a
 
 
 ### Secure communication
+
 All communication is secured with SSL. The CA of the server certificates is compared to a known one. Firmware-images are signed the signature is checked when flashing the images on the EPSs.
 
 ## Initial Setup
