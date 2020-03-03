@@ -12,7 +12,7 @@
 #include <ArduinoJson.h>
 #include "BlinkLED.h"
 
-#define SOFTWAREIMAGE   ARDUINO_BOARD "-" "00.00.08.f"
+#define SOFTWAREIMAGE   ARDUINO_BOARD "-" "00.00.08.h"
 #define FIRMWAREFILE    "/firmware.bin"
 #define CAFILE          "/ca.crt"
 #define CONFIGFILE      "/config.json"
@@ -344,6 +344,7 @@ void setup(){
   DEBUG_PRINT(F("Free Sketch: ")); DEBUG_PRINTLN(ESP.getFreeSketchSpace());
   DEBUG_PRINT(F("Sketch size: ")); DEBUG_PRINTLN(ESP.getSketchSize());
   DEBUG_PRINT(F("Chip size:   ")); DEBUG_PRINTLN(ESP.getFlashChipRealSize());
+  customSetup();
 }
 
 
@@ -577,7 +578,7 @@ void loop(){
   }
   
   if(downloadFilename.length()>0){
-    downloadFile(downloadFilename.c_str(), (gUpdateServerURL + "download" + downloadFilename + (downloadParameter?downloadParameter:"")).c_str());
+    downloadFile(downloadFilename.c_str(), (gUpdateServerURL + downloadFilename + (downloadParameter?downloadParameter:"")).c_str());
     downloadFilename="";
   }
 
@@ -586,4 +587,16 @@ void loop(){
     gMaxMillis=endMillis-startMillis;
     DEBUG_PRINT(F("Loop max duration: ")); DEBUG_PRINTLN(gMaxMillis);
   }
+
+  customLoop();
+}
+
+
+void customSetup(){
+  // put your setup code here
+}
+
+
+void customLoop(){
+  // put your loop code here
 }

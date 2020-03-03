@@ -10,8 +10,7 @@ All configuration data is stored in files located in directory data. This direct
 
 ### Initial WiFi-connect with SmartConfig
 
-To bring the ESP into your WiFI you have to configure the login credentials to your WiFi with an Android or iPhone App. 
-I used the the Android App (make sure you are connected with 2.4Ghz)
+To bring the ESP into your WiFI you have to configure the login credentials to your WiFi with an Android or iPhone App. I used the the Android App (make sure you are connected with 2.4Ghz)
 
     ESP touch SmartConfig ESP8266, ESP32
 
@@ -20,12 +19,11 @@ When the device is connected there will be a short flash every 2 seconds.
 
 ### Watchdog
 
-The function 
+The function
 
     loop()
 
 is watch by a watchdog, which reboots the ESP when the function is not entered after approx. 6 seconds again. Additionally it will reboot when the connection to the backend is lost and it could not be established in a configurable interval.
-
 
 ### Secure communication
 
@@ -42,10 +40,11 @@ Configururation of the connectivity is done in file
     data/config.json
 
 The configuration parameters are
-```json
+
+``` JSON
 {
-  "updateserverurl": "https://<UPDATESERVER_PORT_PATH>",
-  "mqttserver":      "<MQTTSERVER>",
+  "updateserverurl": "https://[UPDATESERVER_PORT_PATH]",
+  "mqttserver":      "[MQTTSERVER]",
   "mqtttls":         true,
   "mqttport":        8883,
   "ntpserver":       "pool.ntp.org",
@@ -54,9 +53,10 @@ The configuration parameters are
   "retrytimeout":    3000
 }
 ```
-At least you have to adopt the 2 servers to your environment. The **<UPDATESERVER_PORT_PATH>** is the baseurl where all downloads/updates are located. The **<MQTTSERVER>** should use TLS (**mqtttls = true**)and typically it listens on port 8883. 
 
-### Generating SSL certificates.
+At least you have to adopt the 2 servers to your environment. The **[UPDATESERVER_PORT_PATH]** is the baseurl where all downloads/updates are located. The **[MQTTSERVER]** should use TLS (**mqtttls = true**)and typically it listens on port 8883.
+
+### Generating SSL certificates
 
 To guarantee a secure communication between your ESPs and the backend servers all communication is done via HTTP/MQTTS. You need SSL-certificates for the MQTT-Server, the Firmware-Updateserver and each ESP. All certificates have to be signed by the same CA. The cA is used to check whether the systems are allowed to communicate twith each other. It makes sure, that only known device could communicate.
 
@@ -74,8 +74,9 @@ In the current version you have to starte the ESP and monitor it via the SerialM
 So the 2 ESP certificate files have to be 84f3eb012345.key and 84f3eb012345.crt
 
 ### Generate certificate to sign sketch
+
 Generate a public/private key pair to sign your code.
-Put the 2 files with the names 
+Put the 2 files with the names
 
     private.key
     public.key
@@ -97,58 +98,84 @@ XXXXXXXX
 )KEY";
 ```
 
+Signing of your code is active when the compiler output contains the line
+
+    ...
+    Enabling binary signing
+    ...
+    Signed binary: /full/path/to/sketch.ino.bin.signed
+    ...
+
+It seens that Arduino-IDE does not sign binaries correctly when you do
+
+    Sketch->export compiled binary
+
+You have to sign it manually with
+
+    python3 ~/.arduino15/packages/esp8266/hardware/esp8266/2.6.3/tools/signing.py --mode sign --privatekey ./private.key --bin ./secureESP8266.ino.d1_mini.bin --out secureESP8266.ino.d1_mini_signed.bin
+
 ## Include own code into the sketch
 
 Put your code in the function
 
 ```C++
-   void customLoop(){
-         // Put your code here
-   }
+void customSetup(){
+  // put your setup code here
+}
+
+
+void customLoop(){
+  // put your loop code here
+}
 ```
 
 ## Upload contents of directory data
 
-When using the Arduino-IDE you need for uploading data into the SPIFFS the arduino-esp8266fs-plugin from 
+When using the Arduino-IDE you need for uploading data into the SPIFFS the arduino-esp8266fs-plugin from
 
     https://github.com/esp8266/arduino-esp8266fs-plugin 
 
-first. When it is installed you can see in menu 
+first. When it is installed you can see in menu
 
     Tools
 
-the Entriy 
+the Entriy
 
     ESP8266 Sketch Data Upload
 
 During the boot phase of the ESP it will show on the SerialMonitor all files it has in the SPIFFs.
 
 ### MQTT topics
-There are 3 predefined topics 
- - status: The status of the ESP, is send every **statusinterval** miliseconds
- - command: Command for the ESPs. 
- - will: Message send when ESP is disconnected or swiched off
- 
+
+There are 3 predefined topics
+
+- status: The status of the ESP, is send every **statusinterval** miliseconds
+- command: Command for the ESPs.
+- will: Message send when ESP is disconnected or swiched off
+
 The MQTT topics all contain with the MAC-address of the devices
-    
+
     /status/84f3eb012345
-    /command/84f3eb012345/<COMMAND>
+    /command/84f3eb012345/[COMMAND]
     /will/84f3eb012345/will
 
- Possible values for <COMMAND> are are 
- - **firmware**: Check for a new firmware and downloads it when a new one exists on the update server.
- - **reboot**: reboot the ESP
- - **flash**: Flash the firmware with the last download
- - **ca**: download a new public key of the CA
- - **cert**: download a new public key of this ESP
- - **key**: download a new private key of this ESP
+ Possible values for **[COMMAND]** are are
+
+- **firmware**: Check for a new firmware and downloads it when a new one exists on the update server.
+- **reboot**: reboot the ESP
+- **flash**: Flash the firmware with the last download
+- **ca**: download a new public key of the CA
+- **cert**: download a new public key of this ESP
+- **key**: download a new private key of this ESP
 
 ## Todos
-- Initial download of ESP certificate (so same image could be used for all devices)  
-- Optimize initial setup 
+
+- Initial download of ESP certificate (so same image could be used for all devices).
+- Optimize initial setup.
+- Better error messages via MQTT
 - Function to easyly change WiFi-Passwords after initial connection
-- seperate servers for MQTT and Update, current version requires both on same server.
-- Automize the include of the signing key into th sketch
-- Better documentation
+- Separate servers for MQTT and Update, current version requires both on same server.
+- Automize the include of the signing key into th sketch.
+- Better documentation.
 - Documentation of the serverpart.
- -Server-GUI to manage devices.
+- Server-GUI to manage devices.
