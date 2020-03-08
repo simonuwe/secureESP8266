@@ -1,5 +1,7 @@
 {
-  "updateserverurl": "https://linux4.fritz.box:3443/",
+  "downloadserver":  "linux4.fritz.box",
+  "downloadport":    3443,
+  "downloadpath":    "/download",
   "mqttserver":      "linux4.fritz.box",
   "mqttport":        8883,
   "mqtttls":         true,

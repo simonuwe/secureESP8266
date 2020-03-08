@@ -12,7 +12,7 @@
 #include <ArduinoJson.h>
 #include "BlinkLED.h"
 
-#define SOFTWAREIMAGE   ARDUINO_BOARD "-" "00.00.08.h"
+#define SOFTWAREIMAGE   ARDUINO_BOARD "-" "00.00.08.i"
 #define FIRMWAREFILE    "/firmware.bin"
 #define CAFILE          "/ca.crt"
 #define CONFIGFILE      "/config.json"
@@ -50,14 +50,14 @@ typedef enum {
   NTPStart,
   NTPSyncing,
   NTPSynced,
-  CertCheching,
-  CertChecked,
+  LoadCertificates,
   MQTTStart,
-  MQTTCertificate,
   MQTTConnecting,
   MQTTConnected,
   MQTTSubscribe,
-  MQTTReady
+  MQTTReady,
+  DownloadStart,
+  DownloadFile
 } ConnectionState;
 
 auto gConnectionState = WiFiSmartConfig; //WiFiNotConnected;
@@ -68,13 +68,15 @@ auto gRetryWaitUntil  = millis();
 auto gMQTTMillis      = millis();
 
 // Topics
-String gStatusTopic     = "/status/";
-String gCommandTopic    = "/command/";
-String gWillTopic       = "/will/";
-String gClientname      = "";
-String gHostname        = "";
-String gUpdateServerURL = "";
-String gFlashError      = "";
+String  gStatusTopic     = "/status/";
+String  gCommandTopic    = "/command/";
+String  gWillTopic       = "/will/";
+String  gClientname      = "";
+String  gHostname        = "";
+String  gDownloadServer  = "";
+int32_t gDownloadPort    = 0;
+String  gDownloadPath    = "";
+String  gErrormessage    = "";
 
 WiFiClientSecure wifiClient;
 PubSubClient mqttClient(wifiClient);
@@ -82,12 +84,12 @@ PubSubClient mqttClient(wifiClient);
 
 bool verifyTLS(String &server, uint16_t port) {
   auto ret = false;
-  DEBUG_PRINT(F("connecting to MQTT-server ")); DEBUG_PRINT(server); DEBUG_PRINT(":"); DEBUG_PRINTLN(port);
+  DEBUG_PRINT(F("checking CA of ")); DEBUG_PRINT(server); DEBUG_PRINT(":"); DEBUG_PRINTLN(port);
   if (wifiClient.connect(server, port)) {
     ret = wifiClient.verifyCertChain(server.c_str());
     wifiClient.stop();
   }else {
-    DEBUG_PRINT(F("connection to MQTT-server failed: ")); DEBUG_PRINTLN(wifiClient.status());
+    DEBUG_PRINT(F("connection to server failed: ")); DEBUG_PRINTLN(wifiClient.status());
     ret = false;    
   }
 
@@ -135,8 +137,10 @@ void loadConfig(){
       gStatusInterval = json["statusinterval"];
       gWaitTimeout    = json["waittimeout"];
       gRetryTimeout   = json["retrytimeout"];
-      gUpdateServerURL= json["updateserverurl"].as<const char *>();
-      
+      gDownloadServer = json["downloadserver"].as<const char *>();
+      gDownloadPort   = json["downloadport"];
+      gDownloadPath   = json["downloadpath"].as<const char *>();
+
       DEBUG_PRINTLN("Config loaded");
     }
   }else{
@@ -209,7 +213,7 @@ wQIDAQAB
       BearSSL::HashSHA256 hash;
       BearSSL::SigningVerifier sign( &signPubKey );
       Update.clearError();
-      gFlashError = "";
+      gErrormessage = "";
       Update.installSignature( &hash, &sign );
       if(Update.begin(firmwareSize)){
         auto newSize = Update.writeStream(stream);
@@ -221,8 +225,8 @@ wQIDAQAB
         if(Update.hasError()){
           StreamString oStr;
           Update.printError(oStr);
-          gFlashError = oStr.readString();
-          DEBUG_PRINTLN(gFlashError);
+          gErrormessage = oStr.readString();
+          DEBUG_PRINTLN(gErrormessage);
         }
       }
     } else {
@@ -236,6 +240,9 @@ void mqttCallback(const char *inTopic, byte* payload, unsigned int length){
   String topic = inTopic;
   DEBUG_PRINT(F("MQTT receive: ")); DEBUG_PRINTLN(inTopic);
   DEBUG_PRINT(F("Command: "));
+  downloadFilename ="";
+  gErrormessage = "";
+  
   if(topic.endsWith("/reboot")){
     DEBUG_PRINTLN("reboot");
     ESP.reset();
@@ -261,16 +268,16 @@ void mqttCallback(const char *inTopic, byte* payload, unsigned int length){
   }else {
     DEBUG_PRINTLN("UNKNOWN");         
   }
+  if(downloadFilename.length()>0){
+    gConnectionState = DownloadStart;
+  }
 }
 
 
-void downloadFile(const char *filename, const char *url){
+void fileDownload(const char *filename, const char *url){
   DEBUG_PRINT(F("Download: ")); DEBUG_PRINT(filename); DEBUG_PRINT(" "); DEBUG_PRINTLN(url);
   HTTPClient client;
   String uri = url;
-  mqttClient.disconnect();
-//  wifiClient.setInsecure();
-  DEBUG_PRINT(F("Free heap: ")); DEBUG_PRINTLN(ESP.getFreeHeap());
   if(client.begin(wifiClient, url)){
 
     const char* headerNames[] = { "Content-Disposition", "Content-Type", "Content-Length" };
@@ -304,7 +311,6 @@ void downloadFile(const char *filename, const char *url){
   }else {
     DEBUG_PRINTLN(F("HTTP-Begin-Error"));
   }
-  gConnectionState = MQTTCertificate;  
 }
 
 void setup(){
@@ -447,14 +453,14 @@ ConnectionState checkMQTTConnection(){
     case NTPSynced:{
       gTimeoutStarted=0;
       DEBUG_PRINTLN(""); DEBUG_PRINT(F("Current time: ")); DEBUG_PRINTLN(ntpClient.getFormattedTime());
-      gConnectionState = MQTTStart;
+      gConnectionState = LoadCertificates;
     }
     break;
-    case MQTTStart:
-      gConnectionState = MQTTCertificate;
+    case LoadCertificates:
       loadCerts(wifiClient);
+      gConnectionState = MQTTStart;
     break;
-    case MQTTCertificate:
+    case MQTTStart:
       if(gMQTTTls){
         DEBUG_PRINT(F("MQTT-Certificate ")); DEBUG_PRINTLN(gMQTTServer);
 
@@ -504,12 +510,32 @@ ConnectionState checkMQTTConnection(){
         DEBUG_PRINTLN(F("MQTT connection lost"));
         gConnectionState= MQTTStart;            
         if(!wifiClient.connected()){
-          DEBUG_PRINTLN(F("WiWi connection lost"));
+          DEBUG_PRINTLN(F("WiFi connection lost"));
           gConnectionState= WiFiNotConnected;      
         } else {
           gConnectionState= MQTTStart;              
         }
       }
+    break;
+    case DownloadStart:
+        // ESP has not enogh memory to handle MQTTS and HTTPS at the same time, so close MQTT to free memory.
+      DEBUG_PRINTLN(F("Disconnect MQTT"));
+      mqttClient.disconnect();
+      //  wifiClient.setInsecure();
+      DEBUG_PRINT(F("Free heap: ")); DEBUG_PRINTLN(ESP.getFreeHeap());
+
+      if(verifyTLS(gDownloadServer, gDownloadPort)){
+        DEBUG_PRINTLN(F("Updateserver-certificate matches"));
+        gConnectionState = DownloadFile;
+      } else {
+        gErrormessage = F("Updateserver-certificate doesn't match");
+        DEBUG_PRINTLN(gErrormessage);
+        gConnectionState = MQTTStart;
+      }
+    break;
+    case DownloadFile:
+      fileDownload(downloadFilename.c_str(), ("https://" + gDownloadServer + ":" + gDownloadPort + gDownloadPath + downloadFilename + (downloadParameter?downloadParameter:"")).c_str());
+      gConnectionState = MQTTStart;
     break;
     default:
       DEBUG_PRINT(F("ConnectionState not handled: ")); DEBUG_PRINTLN(gConnectionState);
@@ -538,8 +564,8 @@ bool sendStatus(){
   json["espname"]      = gHostname;     
   json["espimage"]     = SOFTWAREIMAGE;
   json["espbuild"]     = __DATE__ " " __TIME__;
-  if(gFlashError.length()){
-    json["espflasherror"] = gFlashError;
+  if(gErrormessage.length()){
+    json["errormessage"] = gErrormessage;
   }
   json["espip"]        = WiFi.localIP().toString();
   json["rssi"]         = WiFi.RSSI();
@@ -577,10 +603,6 @@ void loop(){
     flashFirmware(FIRMWAREFILE);
   }
   
-  if(downloadFilename.length()>0){
-    downloadFile(downloadFilename.c_str(), (gUpdateServerURL + downloadFilename + (downloadParameter?downloadParameter:"")).c_str());
-    downloadFilename="";
-  }
 
   auto endMillis = millis();
   if(endMillis-startMillis>gMaxMillis){

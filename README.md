@@ -43,7 +43,9 @@ The configuration parameters are
 
 ``` JSON
 {
-  "updateserverurl": "https://[UPDATESERVER_PORT_PATH]",
+  "downloadserver":  "[DOWLOADSERVER]",
+  "downloadport":    "[DOWLOADPORT]",
+  "downloadpath":    "[DOWLOADPATH]",
   "mqttserver":      "[MQTTSERVER]",
   "mqtttls":         true,
   "mqttport":        8883,
@@ -133,7 +135,7 @@ void customLoop(){
 
 When using the Arduino-IDE you need for uploading data into the SPIFFS the arduino-esp8266fs-plugin from
 
-    https://github.com/esp8266/arduino-esp8266fs-plugin 
+    https://github.com/esp8266/arduino-esp8266fs-plugin
 
 first. When it is installed you can see in menu
 
@@ -168,12 +170,90 @@ The MQTT topics all contain with the MAC-address of the devices
 - **cert**: download a new public key of this ESP
 - **key**: download a new private key of this ESP
 
+With the **status** topic the EPSs send their current status every **statusinterval** milliseconds (from config.json).
+The message is a JSON like
+
+```json
+{
+  "uptimemillis": 270015,
+  "maxmillis":    74,
+  "mqttmillis":   259618,
+  "espname":      "measure-84f3eb0dbf7e",
+  "espimage":     "ESP8266_WEMOS_D1MINIPRO-00.00.08.h",
+  "espbuild":     "Mar  8 2020 10:19:19",
+  "espip":        "192.168.1.182",
+  "rssi":         -65,
+  "espfreeheap":  13512,
+  "errormessage": "Updateserver-certificate doesn't match"
+}
+```
+Content of the attributes
+
+- **uptimemillis**: Uptime of the ESP since last reboot (in msec)
+- **maxmillis**: Maximal time (in msec) an execution ot eh loop() took since last reboot
+- **mqttmillis**: Connection time (in msec) to MQTT-server
+- **espname**:  Name of the ESP (default "measure-" + MAC address)
+- **espimage**:  Name of the current running firmware image    
+- **espbuild**: Build time of current firmware
+- **espip**: IP-address of the device,
+- **rssi**:  The last RSSI of the wiFi-connection
+- **espfreeheap**: The free space in heap-memory (in bytes)
+- **errormessage**: The errormessage of the last unsuccessful command
+
+
+## backend
+
+### MQTT-server
+### Download-server
+
+Downloads are triggered by commands via MQTT (as described above).
+
+A web-server with configured HTTPS is required for downloading configurations, certificates and firmware images. To secure this connection the ESP will first check the CA of the server's SSL-certificate, to make sure that the ESP communicates with a "trusted backend".
+
+Downloads of the configuration and certificates are only activated by a reboot of the ESP.
+
+The EPSs will call URLs like
+
+    https://DOWNLOADSERVER:DOWNLOADPORT/DOWNLOADPATH/FILENAME
+
+The URL **https://DOWNLOADSERVER:DOWNLOADPORT/DOWNLOADPATH** is the prefix which is configured in the
+
+    config.json
+
+in attribute **downloadserver, downloadport, downloadpath**.
+
+#### Configuration download
+
+The EPSs will call the URL
+
+    https://DOWNLOADSERVER:DOWNLOADPORT/DOWNLOADPATH/config.json
+
+The server has to return HTTP 200 and the contents of the configuration file.
+The file is stored as
+
+    /config.json
+
+on the SPIFFS
+
+#### Firmware download
+
+The EPSs will call an URL like
+
+    https://DOWNLOADSERVER:DOWNLOADPORT/DOWNLOADPATH/firmware.bin?curimage=ESP8266_WEMOS_D1MINIPRO-00.00.08.g
+
+The URL-parameter **curimage** contains the current version of the running image. The webserver has to make sure that it delivers the next version that is possible to install on the ESP and a HTPP 200 (OK).
+When the **curimage** is the latest version it has to return a HTTP 304 (not modified).
+
+**Caution:**
+
+When you sign the images make sure that you do not skip image versions. To be able to check the signature the current public signing key is included in the images. So you have to change the key in the image of version **n** and in the signing skript in version **n+1** (one version before the new signature is used for signing).
+
 ## Todos
 
 - Initial download of ESP certificate (so same image could be used for all devices).
 - Optimize initial setup.
 - Better error messages via MQTT
-- Function to easyly change WiFi-Passwords after initial connection
+- Function to easily change WiFi-Passwords after initial connection
 - Separate servers for MQTT and Update, current version requires both on same server.
 - Automize the include of the signing key into th sketch.
 - Better documentation.
